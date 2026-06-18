@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "id": "smouprct",
+  "version": "${version}",
+  "name": "SmoupRCT",
+  "description": "Мод для быстрого переключения между режимами",
+  "authors": [],
+  "contact": {},
+  "license": "All-Rights-Reserved",
+  "icon": "assets/smouprct/icon.png",
+  "environment": "client",
+  "entrypoints": {
+    "fabric-datagen": [
+      "hw.smoup.smouprct.client.SmouprctDataGenerator"
+    ],
+    "client": [
+      "hw.smoup.smouprct.client.SmouprctClient"
+    ],
+    "main": [
+      "hw.smoup.smouprct.Smouprct"
+    ]
+  },
+  "mixins": [
+    "smouprct.mixins.json",
+    {
+      "config": "smouprct.client.mixins.json",
+      "environment": "client"
+    }
+  ],
+  "depends": {
+    "fabricloader": ">=${loader_version}",
+    "fabric-api": "*",
+    "minecraft": "${minecraft_version}"
+  }
+}
