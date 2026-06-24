@@ -2,8 +2,9 @@ package hw.smoup.smouprct.client;
 
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
-import lombok.extern.slf4j.Slf4j;
 import net.fabricmc.loader.api.FabricLoader;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
@@ -12,8 +13,9 @@ import java.nio.file.Path;
 import java.util.HashMap;
 import java.util.Map;
 
-@Slf4j(topic = "SmoupRCT")
 public class RctConfig {
+
+    private static final Logger log = LoggerFactory.getLogger("SmoupRCT");
 
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
 

@@ -10,9 +10,6 @@
   "icon": "assets/smouprct/icon.png",
   "environment": "client",
   "entrypoints": {
-    "fabric-datagen": [
-      "hw.smoup.smouprct.client.SmouprctDataGenerator"
-    ],
     "client": [
       "hw.smoup.smouprct.client.SmouprctClient"
     ],

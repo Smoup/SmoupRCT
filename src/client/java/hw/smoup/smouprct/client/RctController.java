@@ -1,7 +1,5 @@
 package hw.smoup.smouprct.client;
 
-import lombok.RequiredArgsConstructor;
-import lombok.extern.slf4j.Slf4j;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
@@ -9,6 +7,8 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -17,9 +17,9 @@ import java.util.OptionalInt;
 import java.util.Set;
 import java.util.function.Predicate;
 
-@Slf4j(topic = "SmoupRCT")
-@RequiredArgsConstructor
 public class RctController {
+
+    private static final Logger log = LoggerFactory.getLogger("SmoupRCT");
 
     private static final String PREFIX = "[SmoupRCT] ";
     private static final String HUB_COMMAND = "hub";
@@ -48,6 +48,10 @@ public class RctController {
     private final Set<String> visitedCategories = new HashSet<>();
     private boolean leftServer = false;
     private int menuRetryTimer = 0;
+
+    public RctController(RctConfig config) {
+        this.config = config;
+    }
 
     public boolean isBusy() {
         return state != State.IDLE;

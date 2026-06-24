@@ -96,17 +96,16 @@ public class SmouprctClient implements ClientModInitializer {
 
     private static void chat(String text) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player != null) {
-            mc.player.displayClientMessage(
-                    Component
-                            .literal("[SmoupRCT] ")
-                            .withStyle(ChatFormatting.GOLD)
-                            .append(
-                                    Component
-                                            .literal(text)
-                                            .withStyle(ChatFormatting.WHITE)
-                            ), false);
-        }
+        if (mc.player == null) return;
+        Component message = Component
+                .literal("[SmoupRCT] ")
+                .withStyle(ChatFormatting.GOLD)
+                .append(
+                        Component
+                                .literal(text)
+                                .withStyle(ChatFormatting.WHITE)
+                );
+        mc.player.displayClientMessage(message, false);
     }
 
     private void onTick(Minecraft mc) {

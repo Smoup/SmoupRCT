@@ -1,0 +1,45 @@
+# Централизованные свойства Stonecutter.
+# Общие ключи — сверху, версионно-специфичные — в секциях [<версия>].
+# Док: https://stonecutter.kikugie.dev/wiki/config/properties
+
+mod.id = "smouprct"
+mod.name = "SmoupRCT"
+mod.version = "1.0.1"
+
+deps.fabric_loader = "0.16.6"
+loomx.loom_version = "1.17-SNAPSHOT"
+
+# Публикация на Modrinth (см. publishMods в build.gradle.kts).
+# Неизменяемый project ID (slug 'smouprct' тоже сработал бы, но ID не ломается при переименовании).
+# Токен берётся из env MODRINTH_TOKEN.
+publish.modrinth_id = "DLhkGcwz"
+
+["1.20.6"]
+mod.mc_compat = "1.20.6"
+deps.fabric_api = "0.100.0+1.20.6"
+publish.game_versions = "1.20.6"
+
+["1.21.1"]
+mod.mc_compat = ">=1.21 <=1.21.1"
+deps.fabric_api = "0.115.0+1.21.1"
+publish.game_versions = "1.21 1.21.1"
+
+["1.21.4"]
+mod.mc_compat = "1.21.4"
+deps.fabric_api = "0.111.0+1.21.4"
+publish.game_versions = "1.21.4"
+
+["1.21.8"]
+mod.mc_compat = ">=1.21.6 <=1.21.8"
+deps.fabric_api = "0.129.0+1.21.8"
+publish.game_versions = "1.21.6 1.21.7 1.21.8"
+
+["1.21.11"]
+mod.mc_compat = "1.21.11"
+deps.fabric_api = "0.139.4+1.21.11"
+publish.game_versions = "1.21.11"
+
+["26.1"]
+mod.mc_compat = "~26.1"
+deps.fabric_api = "0.145.4+26.1.2"
+publish.game_versions = "26.1.2"
