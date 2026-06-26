@@ -33,6 +33,7 @@ public class RctController {
         IDLE,
         GOTO_HUB,
         WAIT_MODE,
+        RETRY_MODE,
         WAIT_SERVERS,
         AFTER_SERVER_CLICK
     }
@@ -48,6 +49,7 @@ public class RctController {
     private final Set<String> visitedCategories = new HashSet<>();
     private boolean leftServer = false;
     private int menuRetryTimer = 0;
+    private int iconRetries = 0;
 
     public RctController(RctConfig config) {
         this.config = config;
@@ -89,6 +91,7 @@ public class RctController {
         visitedCategories.clear();
         leftServer = false;
         menuRetryTimer = 0;
+        iconRetries = 0;
         timer = 0;
         globalTimer = 0;
         state = State.GOTO_HUB;
@@ -111,6 +114,7 @@ public class RctController {
         switch (state) {
             case GOTO_HUB -> tickGotoHub(mc);
             case WAIT_MODE -> tickWaitMode(mc);
+            case RETRY_MODE -> tickRetryMode(mc);
             case WAIT_SERVERS -> tickWaitServers(mc);
             case AFTER_SERVER_CLICK -> tickAfterServerClick();
             default -> { }
@@ -136,11 +140,44 @@ public class RctController {
         AbstractContainerMenu menu = screen.getMenu();
         OptionalInt iconSlot = findSlot(menu, stack -> hasAllKeywords(stack, targetMode.iconKeywords()));
         if (iconSlot.isEmpty()) {
-            abort(mc, "Иконка режима " + targetMode.label() + " не найдена в /menu.");
+            handleIconNotFound(mc);
             return;
         }
         click(mc, menu, iconSlot.getAsInt());
         enter(State.WAIT_SERVERS);
+    }
+
+    private void handleIconNotFound(Minecraft mc) {
+        if (iconRetries >= config.iconNotFoundRetries) {
+            abort(mc, iconNotFoundMessage());
+            return;
+        }
+
+        iconRetries++;
+        enter(State.RETRY_MODE);
+    }
+
+    private Component iconNotFoundMessage() {
+        return Component.literal("Не нашёл иконку режима ").withStyle(ChatFormatting.RED)
+                .append(Component.literal(targetMode.label()).withStyle(ChatFormatting.GOLD))
+                .append(Component.literal(" в ").withStyle(ChatFormatting.RED))
+                .append(Component.literal("/menu").withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal(".").withStyle(ChatFormatting.RED))
+                .append(Component.literal("\nОбычно дело в скорости подключения — меню не успевает прогрузиться.")
+                        .withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("\nПопробуйте увеличить ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("menuSettleTicks").withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(" на ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal("10").withStyle(ChatFormatting.AQUA))
+                .append(Component.literal(" в файле ").withStyle(ChatFormatting.GRAY))
+                .append(Component.literal(".minecraft/config/smouprct.json").withStyle(ChatFormatting.YELLOW));
+    }
+
+    private void tickRetryMode(Minecraft mc) {
+        if (timer < config.iconRetryDelayTicks) return;
+        sendCommand(mc, MENU_COMMAND);
+        menuRetryTimer = 0;
+        enter(State.WAIT_MODE);
     }
 
     private void retryMenuOrTimeout(Minecraft mc) {
@@ -263,7 +300,11 @@ public class RctController {
     }
 
     private void abort(Minecraft mc, String reason) {
-        log.warn("Abort: {}", reason);
+        abort(mc, Component.literal(reason).withStyle(ChatFormatting.RED));
+    }
+
+    private void abort(Minecraft mc, Component reason) {
+        log.warn("Abort: {}", reason.getString());
         error(mc, reason);
         closeMenu(mc);
         reset();
@@ -277,6 +318,7 @@ public class RctController {
         visitedCategories.clear();
         leftServer = false;
         menuRetryTimer = 0;
+        iconRetries = 0;
     }
 
     private static void click(Minecraft mc, AbstractContainerMenu menu, int slotId) {
@@ -302,15 +344,15 @@ public class RctController {
     }
 
     private static void error(Minecraft mc, String text) {
+        error(mc, Component.literal(text).withStyle(ChatFormatting.RED));
+    }
+
+    private static void error(Minecraft mc, Component body) {
         if (mc.player == null) return;
         Component message = Component
                 .literal(PREFIX)
                 .withStyle(ChatFormatting.GOLD)
-                .append(
-                        Component
-                                .literal(text)
-                                .withStyle(ChatFormatting.RED)
-                );
+                .append(body);
         mc.player.displayClientMessage(message, false);
     }
 }
