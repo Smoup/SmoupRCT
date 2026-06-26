@@ -22,7 +22,7 @@ public class RctConfig {
     public int hubArriveFallbackTicks = 40;
     public int menuRetryTicks = 4;
     public int menuOpenTimeoutTicks = 100;
-    public int menuSettleTicks = 8;
+    public int menuSettleTicks = 20;
     public int postClickTicks = 30;
 
     public Map<String, Map<String, String>> serverCategory = new HashMap<>();
