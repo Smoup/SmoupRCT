@@ -21,11 +21,12 @@ val requiredJava: JavaVersion = when {
 
 dependencies {
     val fabricApi: String = sc.properties["deps.fabric_api"]
+    val loader: String = sc.properties["deps.fabric_loader"]
 
     minecraft("com.mojang:minecraft:${sc.current.version}")
     loomx.applyMojangMappings()
 
-    modImplementation("net.fabricmc:fabric-loader:${property("deps.fabric_loader")}")
+    modImplementation("net.fabricmc:fabric-loader:$loader")
     modImplementation("net.fabricmc.fabric-api:fabric-api:$fabricApi")
 }
 
@@ -57,7 +58,7 @@ java {
 // Значения вычисляем в project-скоупе: внутри tasks { } property(...) резолвится на task.
 val modVersionFull = version.toString()
 val modVersion = property("mod.version").toString()
-val fabricLoader = property("deps.fabric_loader").toString()
+val minLoader: String = sc.properties["mod.min_loader"]
 val mcCompat: String = sc.properties["mod.mc_compat"]
 val mixinJava = "JAVA_${requiredJava.majorVersion}"
 val modJarFile = loomx.modJar.map { it.archiveFile }
@@ -110,7 +111,7 @@ tasks {
         val modProps = mapOf(
             "version" to modVersionFull,
             "minecraft_version" to mcCompat,
-            "loader_version" to fabricLoader,
+            "loader_version" to minLoader,
         )
         modProps.forEach { (k, v) -> inputs.property(k, v) }
         filesMatching("fabric.mod.json") { expand(modProps) }

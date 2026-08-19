@@ -9,10 +9,6 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfo;
 
-/**
- * Перехватывает клики игрока по слотам контейнера, чтобы запоминать сервер,
- * на который он заходит (см. {@link JoinMemory}).
- */
 @Mixin(MultiPlayerGameMode.class)
 public class MultiPlayerGameModeMixin {
 

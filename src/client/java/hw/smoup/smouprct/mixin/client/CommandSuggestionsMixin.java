@@ -17,18 +17,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
-/**
- * Добавляет команды мода (с префиксом «.») в нативный список подсказок чата —
- * тот же попап, что и у серверных команд: расширяемый и листается по Tab.
- *
- * <p>Важно: мы не отменяем оригинальный метод, а <b>дополняем</b> уже собранный
- * {@code pendingSuggestions}. Иначе другие моды, которые добавляют свои «.»-команды
- * в тот же попап, перетирались бы (а их подсказки — нами). Заодно ваниль сама
- * чистит «призрачный» инлайн-суффикс ({@code input.setSuggestion(null)}) при вводе,
- * который не совпадает с командой.
- *
- * @see ChatCompletion
- */
 @Mixin(CommandSuggestions.class)
 public abstract class CommandSuggestionsMixin {
 
@@ -53,7 +41,6 @@ public abstract class CommandSuggestionsMixin {
         StringRange range = StringRange.between(0, text.length());
         List<Suggestion> merged = new ArrayList<>();
 
-        // Сохраняем то, что уже собрали ваниль и другие моды.
         if (pendingSuggestions != null) {
             Suggestions existing = pendingSuggestions.getNow(null);
             if (existing != null) {

@@ -20,19 +20,21 @@ import java.util.List;
 
 public class SmouprctClient implements ClientModInitializer {
 
+    private static final String COMMAND = ".rct";
+    private static final long PVP_CONFIRM_WINDOW_MS = 5000;
+
     private RctConfig config;
     private RctController controller;
 
-    private String detectedCurrent = null;
-    private String detectedMode = null;
-
-    private static final long PVP_CONFIRM_WINDOW_MS = 5000;
-    private long pvpConfirmDeadline = 0;
+    private String currentNumber;
+    private String currentSidebarLine;
+    private long pvpConfirmDeadline;
 
     @Override
     public void onInitializeClient() {
         config = RctConfig.load();
         controller = new RctController(config);
+        RctLog.init(config);
         JoinMemory.init(config);
 
         ClientSendMessageEvents.ALLOW_CHAT.register(this::onChat);
@@ -41,52 +43,55 @@ public class SmouprctClient implements ClientModInitializer {
 
     private boolean onChat(String message) {
         String trimmed = message.trim();
-        if (!trimmed.equals(".rct") && !trimmed.toLowerCase().startsWith(".rct ")) {
-            return true;
-        }
+        if (!isRctCommand(trimmed)) return true;
 
-        String arg = trimmed.length() > 4 ? trimmed.substring(4).trim() : "";
-        String number;
+        String argument = trimmed.length() > COMMAND.length()
+                ? trimmed.substring(COMMAND.length()).trim()
+                : "";
 
-        if (arg.isEmpty()) {
-            number = detectedCurrent != null ? detectedCurrent : config.lastNumber;
-        } else if (arg.matches("\\d+")) {
-            number = arg;
-        } else {
-            chat("Формат: .rct или .rct <номер>");
+        String number = requestedNumber(argument);
+        if (number == null) {
+            Chat.info(Minecraft.getInstance(), "Формат: .rct или .rct <номер>");
             return false;
         }
+        if (!confirmedDuringPvp()) return false;
 
-        if (!confirmPvp()) {
-            return false;
-        }
-
-        controller.start(number, detectedMode);
+        controller.start(number, MenuText.boardKey(currentSidebarLine));
         return false;
     }
 
-    private boolean confirmPvp() {
-        if (!isPvpBossbarActive(Minecraft.getInstance())) {
-            return true;
+    private static boolean isRctCommand(String message) {
+        return message.equals(COMMAND) || message.toLowerCase().startsWith(COMMAND + " ");
+    }
+
+    private String requestedNumber(String argument) {
+        if (argument.isEmpty()) {
+            return currentNumber != null ? currentNumber : config.lastNumber;
         }
+        return argument.matches("\\d+") ? argument : null;
+    }
+
+    private boolean confirmedDuringPvp() {
+        if (!isPvpBossbarActive(Minecraft.getInstance())) return true;
+
         long now = System.currentTimeMillis();
         if (now > pvpConfirmDeadline) {
             pvpConfirmDeadline = now + PVP_CONFIRM_WINDOW_MS;
-            warnPvp();
+            warnAboutPvp();
             return false;
         }
         pvpConfirmDeadline = 0;
         return true;
     }
 
-    private static void warnPvp() {
+    private static void warnAboutPvp() {
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) return;
 
         Component message = Component.literal("⚔ ").withStyle(ChatFormatting.RED)
                 .append(Component.literal("PvP").withStyle(ChatFormatting.RED, ChatFormatting.BOLD))
                 .append(Component.literal(" — повтори ").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(".rct").withStyle(ChatFormatting.YELLOW))
+                .append(Component.literal(COMMAND).withStyle(ChatFormatting.YELLOW))
                 .append(Component.literal(" в течение ").withStyle(ChatFormatting.GRAY))
                 .append(Component.literal("5 сек").withStyle(ChatFormatting.RED))
                 .append(Component.literal(" для перезахода").withStyle(ChatFormatting.GRAY));
@@ -94,29 +99,14 @@ public class SmouprctClient implements ClientModInitializer {
         mc.player.displayClientMessage(message, false);
     }
 
-    private static void chat(String text) {
-        Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null) return;
-        Component message = Component
-                .literal("[SmoupRCT] ")
-                .withStyle(ChatFormatting.GOLD)
-                .append(
-                        Component
-                                .literal(text)
-                                .withStyle(ChatFormatting.WHITE)
-                );
-        mc.player.displayClientMessage(message, false);
-    }
-
     private void onTick(Minecraft mc) {
-        detectFromScoreboard(mc);
+        readSidebar(mc);
+        JoinMemory.tick(mc, currentSidebarLine);
         controller.tick(mc);
     }
 
     private static boolean isPvpBossbarActive(Minecraft mc) {
-        if (mc.gui == null) return false;
         BossHealthOverlay overlay = mc.gui.getBossOverlay();
-        if (overlay == null) return false;
         for (LerpingBossEvent event : ((BossHealthOverlayAccessor) overlay).smouprct$getEvents().values()) {
             String name = event.getName().getString().toLowerCase();
             if (name.contains("pvp") || name.contains("пвп")) return true;
@@ -124,44 +114,32 @@ public class SmouprctClient implements ClientModInitializer {
         return false;
     }
 
-    private void detectFromScoreboard(Minecraft mc) {
-        String foundLine = null;
-        String foundNumber = null;
+    private void readSidebar(Minecraft mc) {
+        currentSidebarLine = null;
+        currentNumber = null;
 
-        for (String line : readSidebarLines(mc)) {
-            String number = ModeRegistry.serverNumber(line);
+        for (String line : sidebarLines(mc)) {
+            String number = MenuText.serverNumber(line);
             if (number == null) continue;
-            ModeRegistry.Mode mode = ModeRegistry.matchByScoreboard(line);
-            if (mode == null) continue;
 
-            foundLine = line;
-            foundNumber = number;
-
-            // Засеваем кеш: текущий сервер -> его категория (из той же строки).
-            ModeRegistry.Category cat = ModeRegistry.categoryByText(line);
-            if (cat != null) {
-                if (config.putCategory(mode.id(), number, cat.id())) {
-                    config.save();
-                }
-            }
-            break;
+            currentSidebarLine = line;
+            currentNumber = number;
+            return;
         }
-
-        detectedMode = foundLine;
-        detectedCurrent = foundNumber;
     }
 
-    private static List<String> readSidebarLines(Minecraft mc) {
+    private static List<String> sidebarLines(Minecraft mc) {
         List<String> lines = new ArrayList<>();
         if (mc.level == null) return lines;
+
         Scoreboard scoreboard = mc.level.getScoreboard();
-        Objective objective = scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
-        if (objective == null) return lines;
-        for (PlayerScoreEntry entry : scoreboard.listPlayerScores(objective)) {
+        Objective sidebar = scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
+        if (sidebar == null) return lines;
+
+        for (PlayerScoreEntry entry : scoreboard.listPlayerScores(sidebar)) {
             String owner = entry.owner();
             PlayerTeam team = scoreboard.getPlayersTeam(owner);
-            Component formatted = PlayerTeam.formatNameForTeam(team, Component.literal(owner));
-            lines.add(formatted.getString());
+            lines.add(PlayerTeam.formatNameForTeam(team, Component.literal(owner)).getString());
         }
         return lines;
     }

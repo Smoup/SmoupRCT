@@ -1,329 +1,425 @@
 package hw.smoup.smouprct.client;
 
-import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.inventory.ClickType;
 import net.minecraft.world.item.ItemStack;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import net.minecraft.world.level.Level;
 
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.OptionalInt;
 import java.util.Set;
-import java.util.function.Predicate;
 
 public class RctController {
 
-    private static final Logger log = LoggerFactory.getLogger("SmoupRCT");
-
-    private static final String PREFIX = "[SmoupRCT] ";
     private static final String HUB_COMMAND = "hub";
     private static final String MENU_COMMAND = "menu";
-    private static final String MODE_SCREEN_TITLE = "выберите режим";
-
-    private static final int MAX_OPERATION_TICKS = 20 * 15;
     private static final int TELEPORT_SETTLE_TICKS = 5;
 
     private enum State {
         IDLE,
-        GOTO_HUB,
-        WAIT_MODE,
-        RETRY_MODE,
-        WAIT_SERVERS,
+        TRAVELLING_TO_HUB,
+        WALKING_MENU,
+        REOPENING_MENU,
+        AWAITING_SCREEN_CHANGE,
         AFTER_SERVER_CLICK
     }
 
     private final RctConfig config;
+    private final OperationTimings timings = new OperationTimings();
+    private final ScreenWatcher watcher;
+    private final Set<String> visitedBranches = new HashSet<>();
 
     private State state = State.IDLE;
-    private int timer = 0;
-    private int globalTimer = 0;
-    private String targetNumber = null;
-    private ModeRegistry.Mode targetMode = null;
+    private int stateTicks;
+    private int operationTicks;
 
-    private final Set<String> visitedCategories = new HashSet<>();
-    private boolean leftServer = false;
-    private int menuRetryTimer = 0;
-    private int iconRetries = 0;
+    private String targetNumber;
+    private List<String> plannedSteps = List.of();
+    private int nextStep;
+    private String enteredMode;
+    private String enteredBranch;
+    private int branchAttempts;
+
+    private Level levelAtStart;
+    private boolean hubReached;
+    private boolean connectionLost;
+    private int menuRetryTicks;
+    private int modeIconRetries;
+
+    private String snapshotBeforeClick;
 
     public RctController(RctConfig config) {
         this.config = config;
+        this.watcher = new ScreenWatcher(config);
     }
 
     public boolean isBusy() {
         return state != State.IDLE;
     }
 
-    public void start(String number, String scoreboardModeText) {
+    public void start(String number, String boardKey) {
         Minecraft mc = Minecraft.getInstance();
-        if (mc.player == null || mc.getConnection() == null || isBusy()) {
-            return;
-        }
+        if (mc.player == null || mc.getConnection() == null || isBusy()) return;
 
-        ModeRegistry.Mode mode = resolveMode(scoreboardModeText);
-        if (mode == null) {
-            error(mc, "Не удалось определить режим. Сначала зайди на режим.");
-            return;
-        }
+        List<String> path = resolvePath(mc, boardKey);
+        if (path == null) return;
         if (number == null) {
-            error(mc, "Не знаю номер текущего сервера.");
+            Chat.error(mc, "Не знаю номер сервера. Напиши .rct <номер>.");
             return;
         }
 
-        beginOperation(mode, number);
+        beginOperation(path, number);
         sendCommand(mc, HUB_COMMAND);
     }
 
-    private ModeRegistry.Mode resolveMode(String scoreboardModeText) {
-        ModeRegistry.Mode mode = ModeRegistry.matchByScoreboard(scoreboardModeText);
-        if (mode != null) return mode;
-        return config.lastModeId != null ? ModeRegistry.byId(config.lastModeId) : null;
+    private List<String> resolvePath(Minecraft mc, String boardKey) {
+        List<ModeEntry> candidates = config.byBoard(boardKey);
+        if (candidates.size() == 1) return candidates.getFirst().steps;
+
+        if (candidates.size() > 1) {
+            for (ModeEntry candidate : candidates) {
+                if (candidate.sameSteps(config.lastSteps)) return candidate.steps;
+            }
+            Chat.error(mc, RctMessages.ambiguousMode(candidates));
+            return null;
+        }
+        if (boardKey == null && !config.lastSteps.isEmpty()) return config.lastSteps;
+
+        Chat.error(mc, RctMessages.unknownMode());
+        return null;
     }
 
-    private void beginOperation(ModeRegistry.Mode mode, String number) {
-        targetMode = mode;
+    private void beginOperation(List<String> path, String number) {
+        plannedSteps = new ArrayList<>(path);
         targetNumber = number;
-        visitedCategories.clear();
-        leftServer = false;
-        menuRetryTimer = 0;
-        iconRetries = 0;
-        timer = 0;
-        globalTimer = 0;
-        state = State.GOTO_HUB;
+        levelAtStart = Minecraft.getInstance().level;
+        timings.reset();
+        forgetProgress();
+        branchAttempts = 0;
+        connectionLost = false;
+        modeIconRetries = 0;
+        operationTicks = 0;
+        switchTo(State.TRAVELLING_TO_HUB);
     }
 
     public void tick(Minecraft mc) {
         if (state == State.IDLE) return;
 
-        if (++globalTimer > MAX_OPERATION_TICKS) {
+        if (++operationTicks > config.operationTimeoutTicks) {
+            TimingTuner.onOperationTimeout(config);
             abort(mc, "Истёк таймаут операции.");
             return;
         }
-
         if (mc.player == null || mc.getConnection() == null) {
-            if (state == State.GOTO_HUB) leftServer = true;
+            if (state == State.TRAVELLING_TO_HUB) connectionLost = true;
             return;
         }
-        timer++;
+        stateTicks++;
 
         switch (state) {
-            case GOTO_HUB -> tickGotoHub(mc);
-            case WAIT_MODE -> tickWaitMode(mc);
-            case RETRY_MODE -> tickRetryMode(mc);
-            case WAIT_SERVERS -> tickWaitServers(mc);
-            case AFTER_SERVER_CLICK -> tickAfterServerClick();
+            case TRAVELLING_TO_HUB -> travelToHub(mc);
+            case WALKING_MENU -> walkMenu(mc);
+            case REOPENING_MENU -> reopenMenu(mc);
+            case AWAITING_SCREEN_CHANGE -> awaitScreenChange(mc);
+            case AFTER_SERVER_CLICK -> awaitTeleport();
             default -> { }
         }
     }
 
-    private void tickGotoHub(Minecraft mc) {
-        boolean arrived = leftServer || globalTimer >= config.hubArriveFallbackTicks;
-        if (!arrived) return;
-        sendCommand(mc, MENU_COMMAND);
-        menuRetryTimer = 0;
-        enter(State.WAIT_MODE);
-    }
-
-    private void tickWaitMode(Minecraft mc) {
-        AbstractContainerScreen<?> screen = Menus.openContainer(mc);
-        if (screen == null || !isModeScreen(screen)) {
-            retryMenuOrTimeout(mc);
+    private void travelToHub(Minecraft mc) {
+        if (!hubReached) {
+            if (!hasArrivedInHub(mc)) return;
+            noteHubReached(mc);
             return;
         }
-        if (timer < config.menuSettleTicks) return;
+        if (stateTicks < config.hubSettleTicks) return;
+        requestMenu(mc);
+    }
+
+    private boolean hasArrivedInHub(Minecraft mc) {
+        return connectionLost
+                || hasChangedWorld(mc)
+                || operationTicks >= config.hubArriveFallbackTicks;
+    }
+
+    private boolean hasChangedWorld(Minecraft mc) {
+        return mc.level != null && mc.level != levelAtStart;
+    }
+
+    private void noteHubReached(Minecraft mc) {
+        hubReached = true;
+        stateTicks = 0;
+        if (hasChangedWorld(mc)) timings.hubReached(operationTicks);
+        RctLog.detail("В хабе за {} тиков, мир сменился: {}", operationTicks, hasChangedWorld(mc));
+    }
+
+    private void requestMenu(Minecraft mc) {
+        sendCommand(mc, MENU_COMMAND);
+        menuRetryTicks = 0;
+        timings.menuRequested(operationTicks);
+        forgetProgress();
+        switchTo(State.WALKING_MENU);
+    }
+
+    private void forgetProgress() {
+        nextStep = 0;
+        enteredMode = null;
+        enteredBranch = null;
+        visitedBranches.clear();
+        watcher.forget();
+    }
+
+    private void walkMenu(Minecraft mc) {
+        AbstractContainerScreen<?> screen = Menus.openContainer(mc);
+        if (screen == null) {
+            watcher.forget();
+            awaitMenu(mc);
+            return;
+        }
+        if (!watcher.hasAppeared()) {
+            noteScreenAppeared();
+            return;
+        }
 
         AbstractContainerMenu menu = screen.getMenu();
-        OptionalInt iconSlot = findSlot(menu, stack -> hasAllKeywords(stack, targetMode.iconKeywords()));
-        if (iconSlot.isEmpty()) {
-            handleIconNotFound(mc);
+        if (watcher.trackStability(screen)) timings.contentSettled(stateTicks);
+
+        if (clickVisibleTarget(mc, screen, menu)) return;
+        if (!watcher.isSettled(menu, stateTicks)) return;
+
+        watcher.logOnce(screen);
+        handleTargetMissing(mc, screen, menu);
+    }
+
+    private void noteScreenAppeared() {
+        watcher.noteAppeared();
+        timings.menuOpened(operationTicks);
+        stateTicks = 0;
+    }
+
+    private void awaitMenu(Minecraft mc) {
+        if (insideMode()) {
+            if (stateTicks >= config.menuOpenTimeoutTicks) {
+                TimingTuner.onMenuTimeout(config);
+                abort(mc, "Меню закрылось на середине пути.");
+            }
             return;
         }
-        click(mc, menu, iconSlot.getAsInt());
-        enter(State.WAIT_SERVERS);
-    }
-
-    private void handleIconNotFound(Minecraft mc) {
-        if (iconRetries >= config.iconNotFoundRetries) {
-            abort(mc, iconNotFoundMessage());
-            return;
-        }
-
-        iconRetries++;
-        enter(State.RETRY_MODE);
-    }
-
-    private Component iconNotFoundMessage() {
-        return Component.literal("Не нашёл иконку режима ").withStyle(ChatFormatting.RED)
-                .append(Component.literal(targetMode.label()).withStyle(ChatFormatting.GOLD))
-                .append(Component.literal(" в ").withStyle(ChatFormatting.RED))
-                .append(Component.literal("/menu").withStyle(ChatFormatting.YELLOW))
-                .append(Component.literal(".").withStyle(ChatFormatting.RED))
-                .append(Component.literal("\nОбычно дело в скорости подключения — меню не успевает прогрузиться.")
-                        .withStyle(ChatFormatting.GRAY))
-                .append(Component.literal("\nПопробуйте увеличить ").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal("menuSettleTicks").withStyle(ChatFormatting.AQUA))
-                .append(Component.literal(" на ").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal("10").withStyle(ChatFormatting.AQUA))
-                .append(Component.literal(" в файле ").withStyle(ChatFormatting.GRAY))
-                .append(Component.literal(".minecraft/config/smouprct.json").withStyle(ChatFormatting.YELLOW));
-    }
-
-    private void tickRetryMode(Minecraft mc) {
-        if (timer < config.iconRetryDelayTicks) return;
-        sendCommand(mc, MENU_COMMAND);
-        menuRetryTimer = 0;
-        enter(State.WAIT_MODE);
-    }
-
-    private void retryMenuOrTimeout(Minecraft mc) {
-        if (++menuRetryTimer >= config.menuRetryTicks) {
+        if (++menuRetryTicks >= config.menuRetryTicks) {
             sendCommand(mc, MENU_COMMAND);
-            menuRetryTimer = 0;
+            menuRetryTicks = 0;
+            forgetProgress();
         }
-        if (timer >= config.menuOpenTimeoutTicks) {
+        if (stateTicks >= config.menuOpenTimeoutTicks) {
+            TimingTuner.onMenuTimeout(config);
             abort(mc, "Меню не открылось.");
         }
     }
 
-    private void tickWaitServers(Minecraft mc) {
-        AbstractContainerScreen<?> screen = Menus.openContainer(mc);
-        if (screen == null || isModeScreen(screen)) {
-            if (timer >= config.menuOpenTimeoutTicks) {
-                abort(mc, "Экран выбора сервера не открылся.");
+    private boolean clickVisibleTarget(Minecraft mc, AbstractContainerScreen<?> screen, AbstractContainerMenu menu) {
+        if (insideMode()) {
+            OptionalInt serverSlot = MenuSearch.serverSlot(menu, targetNumber);
+            if (serverSlot.isPresent()) {
+                rememberVisibleServers(menu);
+                clickServer(mc, menu, serverSlot.getAsInt());
+                return true;
             }
-            return;
         }
-        if (timer < config.menuSettleTicks) return;
-
-        navigateServers(mc, screen.getMenu());
-    }
-
-    private void navigateServers(Minecraft mc, AbstractContainerMenu menu) {
-        try {
-            int targetSlot = scanAndCacheServers(menu);
-            click(mc, menu, targetSlot);
-            enter(State.AFTER_SERVER_CLICK);
-        } catch (ServerNotOnScreenException notHere) {
-            continueSearchOrFail(mc, menu);
-        }
-    }
-
-    private void continueSearchOrFail(Minecraft mc, AbstractContainerMenu menu) {
-        if (targetMode.hasCategories() && openNextCategory(mc, menu)) return;
-        abort(mc, "Сервер #" + targetNumber + " не найден в " + targetMode.label() + ".");
-    }
-
-    private int scanAndCacheServers(AbstractContainerMenu menu) throws ServerNotOnScreenException {
-        OptionalInt targetSlot = OptionalInt.empty();
-        boolean changed = false;
-        int slots = Menus.contentSlotCount(menu);
-        for (int i = 0; i < slots; i++) {
-            ItemStack stack = menu.slots.get(i).getItem();
-            if (stack.isEmpty()) continue;
-
-            ModeRegistry.ServerListing server = ModeRegistry.parseServer(Menus.textOf(stack)).orElse(null);
-            if (server == null) continue;
-
-            changed |= config.putCategory(targetMode.id(), server.number(), server.categoryId());
-            visitedCategories.add(server.categoryId());
-            if (server.number().equals(targetNumber)) targetSlot = OptionalInt.of(i);
-        }
-        if (changed) config.save();
-        return targetSlot.orElseThrow(ServerNotOnScreenException::new);
-    }
-
-    private static final class ServerNotOnScreenException extends Exception {
-        @Override
-        public synchronized Throwable fillInStackTrace() {
-            return this;
-        }
-    }
-
-    private boolean openNextCategory(Minecraft mc, AbstractContainerMenu menu) {
-        for (ModeRegistry.Category category : categoriesByPriority()) {
-            if (visitedCategories.contains(category.id())) continue;
-            OptionalInt slot = findSlot(menu, stack -> nameContains(stack, category.nameKeyword()));
-            if (slot.isEmpty()) continue;
-
-            visitedCategories.add(category.id());
-            click(mc, menu, slot.getAsInt());
-            enter(State.WAIT_SERVERS);
-            return true;
+        if (nextStep < plannedSteps.size()) {
+            OptionalInt stepSlot = MenuSearch.namedSlot(menu, plannedSteps.get(nextStep));
+            if (stepSlot.isPresent()) {
+                followStep(mc, screen, menu, stepSlot.getAsInt());
+                return true;
+            }
         }
         return false;
     }
 
-    private List<ModeRegistry.Category> categoriesByPriority() {
-        ModeRegistry.Category cached = ModeRegistry.categoryById(config.getCategory(targetMode.id(), targetNumber));
-        if (cached == null) return ModeRegistry.CATEGORIES;
-
-        List<ModeRegistry.Category> ordered = new ArrayList<>();
-        ordered.add(cached);
-        ordered.addAll(ModeRegistry.CATEGORIES);
-        return ordered;
-    }
-
-    private void tickAfterServerClick() {
-        boolean leftMenu = Menus.openContainer(Minecraft.getInstance()) == null;
-        if (leftMenu && timer >= TELEPORT_SETTLE_TICKS) {
-            reset();
-        } else if (timer >= config.postClickTicks) {
-            reset();
+    private void handleTargetMissing(Minecraft mc, AbstractContainerScreen<?> screen, AbstractContainerMenu menu) {
+        nextStep = plannedSteps.size();
+        if (!insideMode()) {
+            RctLog.warn("Не нашёл шаг \"{}\"", plannedModeName());
+            retryFromHubOrGiveUp(mc);
+            return;
         }
+        rememberVisibleServers(menu);
+        if (tryAnotherBranch(mc, screen, menu)) return;
+
+        RctLog.warn("Не нашёл сервер #{} в \"{}\"", targetNumber, enteredMode);
+        abort(mc, RctMessages.serverNotFound(targetNumber, enteredMode));
     }
 
-    private static OptionalInt findSlot(AbstractContainerMenu menu, Predicate<ItemStack> matches) {
-        int slots = Menus.contentSlotCount(menu);
-        for (int i = 0; i < slots; i++) {
-            ItemStack stack = menu.slots.get(i).getItem();
-            if (!stack.isEmpty() && matches.test(stack)) return OptionalInt.of(i);
+    private void followStep(Minecraft mc, AbstractContainerScreen<?> screen, AbstractContainerMenu menu, int slot) {
+        String label = Menus.label(menu.slots.get(slot).getItem());
+        if (insideMode()) {
+            enteredBranch = label;
+            visitedBranches.add(MenuText.normalize(label));
+        } else {
+            enteredMode = label;
+        }
+        RctLog.detail("Жму шаг {}: \"{}\"", nextStep, label);
+        nextStep++;
+        clickAndAwaitChange(mc, screen, menu, slot);
+    }
+
+    private boolean tryAnotherBranch(Minecraft mc, AbstractContainerScreen<?> screen, AbstractContainerMenu menu) {
+        if (branchAttempts >= config.branchClickLimit) return false;
+
+        OptionalInt slot = knownBranchSlot(menu);
+        if (slot.isEmpty()) slot = MenuSearch.unvisitedBranchSlot(menu, visitedBranches);
+        if (slot.isEmpty()) return false;
+
+        enteredBranch = Menus.label(menu.slots.get(slot.getAsInt()).getItem());
+        visitedBranches.add(MenuText.normalize(enteredBranch));
+        branchAttempts++;
+        RctLog.detail("Пробую раздел \"{}\" ({} из {})", enteredBranch, branchAttempts, config.branchClickLimit);
+        clickAndAwaitChange(mc, screen, menu, slot.getAsInt());
+        return true;
+    }
+
+    private OptionalInt knownBranchSlot(AbstractContainerMenu menu) {
+        for (String branch : branchesByPriority()) {
+            if (visitedBranches.contains(MenuText.normalize(branch))) continue;
+            OptionalInt slot = MenuSearch.namedSlot(menu, branch);
+            if (slot.isPresent()) return slot;
         }
         return OptionalInt.empty();
     }
 
-    private static boolean hasAllKeywords(ItemStack stack, List<String> keywords) {
-        return ModeRegistry.allContained(Menus.textOf(stack), keywords);
+    private List<String> branchesByPriority() {
+        List<String> ordered = new ArrayList<>();
+        String remembered = config.branchFor(enteredMode, targetNumber);
+        if (remembered != null && !remembered.isEmpty()) ordered.add(remembered);
+        for (String known : config.knownBranches(enteredMode)) {
+            if (!ordered.contains(known)) ordered.add(known);
+        }
+        return ordered;
     }
 
-    private static boolean nameContains(ItemStack stack, String keyword) {
-        return stack.getHoverName().getString().toLowerCase().contains(keyword);
+    private void rememberVisibleServers(AbstractContainerMenu menu) {
+        boolean changed = false;
+        int slots = Menus.contentSlotCount(menu);
+        for (int slot = 0; slot < slots; slot++) {
+            ItemStack stack = menu.slots.get(slot).getItem();
+            if (stack.isEmpty()) continue;
+
+            String number = MenuText.serverNumber(Menus.textOf(stack));
+            if (number != null) changed |= config.putBranch(enteredMode, number, enteredBranch);
+        }
+        if (changed) config.save();
     }
 
-    private void enter(State next) {
+    private void clickServer(Minecraft mc, AbstractContainerMenu menu, int slot) {
+        RctLog.detail("Жму сервер #{}, путь {}", targetNumber, walkedPath());
+        JoinMemory.expectJoin(walkedPath(), targetNumber);
+        click(mc, menu, slot);
+        switchTo(State.AFTER_SERVER_CLICK);
+    }
+
+    private List<String> walkedPath() {
+        List<String> path = new ArrayList<>();
+        if (enteredMode != null) path.add(enteredMode);
+        if (enteredBranch != null) path.add(enteredBranch);
+        return path;
+    }
+
+    private void clickAndAwaitChange(Minecraft mc, AbstractContainerScreen<?> screen,
+                                     AbstractContainerMenu menu, int slot) {
+        snapshotBeforeClick = Menus.snapshot(screen);
+        click(mc, menu, slot);
+        switchTo(State.AWAITING_SCREEN_CHANGE);
+    }
+
+    private void awaitScreenChange(Minecraft mc) {
+        AbstractContainerScreen<?> screen = Menus.openContainer(mc);
+        boolean changed = screen != null && !Menus.snapshot(screen).equals(snapshotBeforeClick);
+        if (changed) timings.screenChanged(stateTicks);
+
+        if (changed || stateTicks >= config.screenChangeTimeoutTicks) {
+            watcher.forget();
+            switchTo(State.WALKING_MENU);
+        }
+    }
+
+    private void retryFromHubOrGiveUp(Minecraft mc) {
+        TimingTuner.onSlowScreen(config);
+        if (modeIconRetries >= config.iconNotFoundRetries) {
+            abort(mc, RctMessages.modeIconNotFound(plannedModeName()));
+            return;
+        }
+        modeIconRetries++;
+        switchTo(State.REOPENING_MENU);
+    }
+
+    private void reopenMenu(Minecraft mc) {
+        if (stateTicks < config.iconRetryDelayTicks) return;
+        sendCommand(mc, HUB_COMMAND);
+        levelAtStart = mc.level;
+        hubReached = false;
+        forgetProgress();
+        switchTo(State.TRAVELLING_TO_HUB);
+    }
+
+    private void awaitTeleport() {
+        boolean menuClosed = Menus.openContainer(Minecraft.getInstance()) == null;
+        boolean teleported = menuClosed && stateTicks >= TELEPORT_SETTLE_TICKS;
+        if (teleported || stateTicks >= config.postClickTicks) {
+            timings.submitTo(config);
+            reset();
+        }
+    }
+
+    private boolean insideMode() {
+        return enteredMode != null;
+    }
+
+    private String plannedModeName() {
+        return plannedSteps.isEmpty() ? "режима" : plannedSteps.getFirst();
+    }
+
+    private void switchTo(State next) {
         state = next;
-        timer = 0;
+        stateTicks = 0;
     }
 
     private void abort(Minecraft mc, String reason) {
-        abort(mc, Component.literal(reason).withStyle(ChatFormatting.RED));
+        abort(mc, Chat.red(reason));
     }
 
     private void abort(Minecraft mc, Component reason) {
-        log.warn("Abort: {}", reason.getString());
-        error(mc, reason);
+        RctLog.warn("Отмена: {}", reason.getString());
+        Chat.error(mc, reason);
         closeMenu(mc);
         reset();
     }
 
     private void reset() {
-        state = State.IDLE;
-        timer = 0;
         targetNumber = null;
-        targetMode = null;
-        visitedCategories.clear();
-        leftServer = false;
-        menuRetryTimer = 0;
-        iconRetries = 0;
+        plannedSteps = List.of();
+        levelAtStart = null;
+        hubReached = false;
+        connectionLost = false;
+        menuRetryTicks = 0;
+        modeIconRetries = 0;
+        branchAttempts = 0;
+        snapshotBeforeClick = null;
+        forgetProgress();
+        switchTo(State.IDLE);
     }
 
-    private static void click(Minecraft mc, AbstractContainerMenu menu, int slotId) {
+    private static void click(Minecraft mc, AbstractContainerMenu menu, int slot) {
         if (mc.gameMode == null || mc.player == null) return;
-        mc.gameMode.handleInventoryMouseClick(menu.containerId, slotId, 0, ClickType.PICKUP, mc.player);
+        JoinMemory.selfClick(true);
+        try {
+            mc.gameMode.handleInventoryMouseClick(menu.containerId, slot, 0, ClickType.PICKUP, mc.player);
+        } finally {
+            JoinMemory.selfClick(false);
+        }
     }
 
     private static void closeMenu(Minecraft mc) {
@@ -337,22 +433,5 @@ public class RctController {
         if (mc.getConnection() != null) {
             mc.getConnection().sendCommand(command);
         }
-    }
-
-    private static boolean isModeScreen(AbstractContainerScreen<?> screen) {
-        return screen.getTitle().getString().toLowerCase().contains(MODE_SCREEN_TITLE);
-    }
-
-    private static void error(Minecraft mc, String text) {
-        error(mc, Component.literal(text).withStyle(ChatFormatting.RED));
-    }
-
-    private static void error(Minecraft mc, Component body) {
-        if (mc.player == null) return;
-        Component message = Component
-                .literal(PREFIX)
-                .withStyle(ChatFormatting.GOLD)
-                .append(body);
-        mc.player.displayClientMessage(message, false);
     }
 }
