@@ -16,7 +16,7 @@ public class ModeEntry {
     }
 
     public String root() {
-        return steps.isEmpty() ? "" : steps.getFirst();
+        return steps.isEmpty() ? "" : steps.get(0);
     }
 
     public String branch() {

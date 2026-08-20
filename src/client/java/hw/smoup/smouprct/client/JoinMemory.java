@@ -116,7 +116,8 @@ public final class JoinMemory {
     }
 
     private static boolean isSameMenuLevel() {
-        return !stepScreens.isEmpty() && stepScreens.getLast().equals(clickedOnScreen);
+        return !stepScreens.isEmpty()
+                && stepScreens.get(stepScreens.size() - 1).equals(clickedOnScreen);
     }
 
     private static void confirmJoin(String sidebarLine) {

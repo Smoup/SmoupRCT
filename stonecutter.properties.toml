@@ -4,7 +4,7 @@
 
 mod.id = "smouprct"
 mod.name = "SmoupRCT"
-mod.version = "1.0.4"
+mod.version = "1.0.5"
 
 # deps.fabric_loader — на чём собираем и запускаем dev-клиент.
 # mod.min_loader — что попадает в depends мода: минимум, который требует Fabric API
@@ -19,16 +19,44 @@ loomx.loom_version = "1.17-SNAPSHOT"
 # Токен берётся из env MODRINTH_TOKEN.
 publish.modrinth_id = "DLhkGcwz"
 
+["1.20.1"]
+mod.mc_compat = "1.20.1"
+deps.fabric_api = "0.92.11+1.20.1"
+deps.fabric_loader = "0.16.10"
+mod.min_loader = "0.16.10"
+publish.game_versions = "1.20.1"
+
+["1.20.2"]
+mod.mc_compat = "1.20.2"
+deps.fabric_api = "0.91.6+1.20.2"
+deps.fabric_loader = "0.16.10"
+mod.min_loader = "0.14.22"
+publish.game_versions = "1.20.2"
+
+["1.20.4"]
+mod.mc_compat = ">=1.20.3 <=1.20.4"
+deps.fabric_api = "0.97.3+1.20.4"
+deps.fabric_loader = "0.16.10"
+mod.min_loader = "0.15.1"
+publish.game_versions = "1.20.3 1.20.4"
+
 ["1.20.6"]
-mod.mc_compat = "1.20.6"
+mod.mc_compat = ">=1.20.5 <=1.20.6"
 deps.fabric_api = "0.100.0+1.20.6"
-publish.game_versions = "1.20.6"
+publish.game_versions = "1.20.5 1.20.6"
 
 ["1.21.1"]
 mod.mc_compat = ">=1.21 <=1.21.1"
 deps.fabric_api = "0.115.0+1.21.1"
 mod.min_loader = "0.15.11"
 publish.game_versions = "1.21 1.21.1"
+
+["1.21.3"]
+mod.mc_compat = ">=1.21.2 <=1.21.3"
+deps.fabric_api = "0.114.1+1.21.3"
+deps.fabric_loader = "0.16.9"
+mod.min_loader = "0.16.8"
+publish.game_versions = "1.21.2 1.21.3"
 
 ["1.21.4"]
 mod.mc_compat = "1.21.4"
@@ -37,12 +65,26 @@ deps.fabric_loader = "0.16.9"
 mod.min_loader = "0.16.9"
 publish.game_versions = "1.21.4"
 
+["1.21.5"]
+mod.mc_compat = "1.21.5"
+deps.fabric_api = "0.128.2+1.21.5"
+deps.fabric_loader = "0.16.13"
+mod.min_loader = "0.16.10"
+publish.game_versions = "1.21.5"
+
 ["1.21.8"]
 mod.mc_compat = ">=1.21.6 <=1.21.8"
 deps.fabric_api = "0.129.0+1.21.8"
 deps.fabric_loader = "0.16.13"
 mod.min_loader = "0.16.13"
 publish.game_versions = "1.21.6 1.21.7 1.21.8"
+
+["1.21.10"]
+mod.mc_compat = ">=1.21.9 <=1.21.10"
+deps.fabric_api = "0.138.4+1.21.10"
+deps.fabric_loader = "0.17.3"
+mod.min_loader = "0.17.0"
+publish.game_versions = "1.21.9 1.21.10"
 
 ["1.21.11"]
 mod.mc_compat = "1.21.11"

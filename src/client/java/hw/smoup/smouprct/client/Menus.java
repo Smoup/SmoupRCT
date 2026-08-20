@@ -4,11 +4,8 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.inventory.AbstractContainerScreen;
 import net.minecraft.client.gui.screens.inventory.InventoryScreen;
-import net.minecraft.core.component.DataComponents;
-import net.minecraft.network.chat.Component;
 import net.minecraft.world.inventory.AbstractContainerMenu;
 import net.minecraft.world.item.ItemStack;
-import net.minecraft.world.item.component.ItemLore;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -86,7 +83,7 @@ public final class Menus {
 
     public static String textOf(ItemStack stack) {
         StringBuilder text = new StringBuilder(stack.getHoverName().getString());
-        for (String line : loreLines(stack)) {
+        for (String line : Compat.loreLines(stack)) {
             text.append('\n').append(line);
         }
         return text.toString();
@@ -94,23 +91,12 @@ public final class Menus {
 
     private static String firstMeaningfulLoreLines(ItemStack stack) {
         List<String> meaningful = new ArrayList<>();
-        for (String line : loreLines(stack)) {
+        for (String line : Compat.loreLines(stack)) {
             String trimmed = line.trim();
             if (MenuText.tokens(trimmed).isEmpty()) continue;
             meaningful.add(trimmed);
             if (meaningful.size() == LORE_LINES_IN_LABEL) break;
         }
         return String.join(" ", meaningful);
-    }
-
-    private static List<String> loreLines(ItemStack stack) {
-        List<String> lines = new ArrayList<>();
-        ItemLore lore = stack.get(DataComponents.LORE);
-        if (lore == null) return lines;
-
-        for (Component line : lore.lines()) {
-            lines.add(line.getString());
-        }
-        return lines;
     }
 }

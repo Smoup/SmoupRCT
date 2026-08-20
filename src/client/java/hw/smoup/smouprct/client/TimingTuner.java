@@ -102,7 +102,7 @@ public final class TimingTuner {
         if (value < 0) return;
         samples.add(value);
         while (samples.size() > WINDOW) {
-            samples.removeFirst();
+            samples.remove(0);
         }
     }
 
@@ -113,7 +113,7 @@ public final class TimingTuner {
 
     private static int set(StringBuilder changes, String name, int current, int wanted,
                            int floor, int ceiling) {
-        int value = Math.clamp(wanted, floor, ceiling);
+        int value = Math.max(floor, Math.min(ceiling, wanted));
         if (value == current) return current;
 
         changes.append("\n  ").append(name).append(": ").append(current).append(" -> ").append(value);

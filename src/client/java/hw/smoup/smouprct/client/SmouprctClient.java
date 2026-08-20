@@ -9,14 +9,6 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.BossHealthOverlay;
 import net.minecraft.client.gui.components.LerpingBossEvent;
 import net.minecraft.network.chat.Component;
-import net.minecraft.world.scores.DisplaySlot;
-import net.minecraft.world.scores.Objective;
-import net.minecraft.world.scores.PlayerScoreEntry;
-import net.minecraft.world.scores.PlayerTeam;
-import net.minecraft.world.scores.Scoreboard;
-
-import java.util.ArrayList;
-import java.util.List;
 
 public class SmouprctClient implements ClientModInitializer {
 
@@ -118,7 +110,7 @@ public class SmouprctClient implements ClientModInitializer {
         currentSidebarLine = null;
         currentNumber = null;
 
-        for (String line : sidebarLines(mc)) {
+        for (String line : Compat.sidebarLines(mc)) {
             String number = MenuText.serverNumber(line);
             if (number == null) continue;
 
@@ -128,19 +120,4 @@ public class SmouprctClient implements ClientModInitializer {
         }
     }
 
-    private static List<String> sidebarLines(Minecraft mc) {
-        List<String> lines = new ArrayList<>();
-        if (mc.level == null) return lines;
-
-        Scoreboard scoreboard = mc.level.getScoreboard();
-        Objective sidebar = scoreboard.getDisplayObjective(DisplaySlot.SIDEBAR);
-        if (sidebar == null) return lines;
-
-        for (PlayerScoreEntry entry : scoreboard.listPlayerScores(sidebar)) {
-            String owner = entry.owner();
-            PlayerTeam team = scoreboard.getPlayersTeam(owner);
-            lines.add(PlayerTeam.formatNameForTeam(team, Component.literal(owner)).getString());
-        }
-        return lines;
-    }
 }

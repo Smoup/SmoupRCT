@@ -13,10 +13,11 @@ plugins {
 version = "${property("mod.version")}+${sc.current.version}"
 base.archivesName = property("mod.name") as String
 
-// Java: 26.1 требует JDK 25, всё остальное в нашем диапазоне (1.20.6+) — JDK 21.
+// Java: 26.1 требует JDK 25, 1.20.5+ — JDK 21, более старые ветки — JDK 17.
 val requiredJava: JavaVersion = when {
     sc.current.parsed >= "26.1" -> JavaVersion.VERSION_25
-    else -> JavaVersion.VERSION_21
+    sc.current.parsed >= "1.20.5" -> JavaVersion.VERSION_21
+    else -> JavaVersion.VERSION_17
 }
 
 dependencies {

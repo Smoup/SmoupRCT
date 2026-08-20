@@ -1,3 +1,17 @@
+## 1.0.5
+
+**Much wider version support: 1.20.1 through 26.1, with no gaps.** The mod now covers 1.20.1,
+1.20.2, 1.20.3–1.20.4, 1.20.5–1.20.6, 1.21–1.21.1, 1.21.2–1.21.3, 1.21.4, 1.21.5, 1.21.6–1.21.8,
+1.21.9–1.21.10, 1.21.11 and 26.1.
+
+Item lore and scoreboard reading are now version-aware: on 1.20.5+ they use the component API,
+below that the old NBT and scoreboard APIs. Nothing changed in how the mod behaves in game.
+
+Required Fabric Loader version is taken from what each branch's Fabric API actually needs — on
+1.20.2, for instance, it is as low as 0.14.22.
+
+---
+
 ## 1.0.4
 
 **Game modes are no longer hardcoded.** Previously the list of modes and categories lived in
@@ -29,6 +43,22 @@ The old mod config is not migrated: on first launch the mod starts learning from
 ---
 
 ### По-русски
+
+## 1.0.5
+
+**Поддержка версий расширена: от 1.20.1 до 26.1, без пробелов.** Теперь мод собирается под
+1.20.1, 1.20.2, 1.20.3–1.20.4, 1.20.5–1.20.6, 1.21–1.21.1, 1.21.2–1.21.3, 1.21.4, 1.21.5,
+1.21.6–1.21.8, 1.21.9–1.21.10, 1.21.11 и 26.1.
+
+Чтение лора предметов и строк скорборда стало версионным: на 1.20.5+ через компонентный API,
+ниже — через старый NBT и прежний скорборд. В поведении мода в игре ничего не изменилось.
+
+Требуемая версия Fabric Loader берётся из того, что реально нужно Fabric API конкретной
+ветки, — например, на 1.20.2 это всего лишь 0.14.22.
+
+---
+
+## 1.0.4
 
 **Режимы больше не зашиты в мод.** Раньше список режимов и разделов лежал в коде, и новый
 режим на сервере требовал обновления мода. Теперь мод запоминает дорогу до сервера по вашим

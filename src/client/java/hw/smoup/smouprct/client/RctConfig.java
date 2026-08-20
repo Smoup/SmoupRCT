@@ -152,7 +152,7 @@ public class RctConfig {
     }
 
     private static String last(List<String> steps) {
-        return steps.isEmpty() ? "" : steps.getLast();
+        return steps.isEmpty() ? "" : steps.get(steps.size() - 1);
     }
 
     public String branchFor(String root, String number) {

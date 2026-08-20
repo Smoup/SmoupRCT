@@ -79,7 +79,7 @@ public class RctController {
 
     private List<String> resolvePath(Minecraft mc, String boardKey) {
         List<ModeEntry> candidates = config.byBoard(boardKey);
-        if (candidates.size() == 1) return candidates.getFirst().steps;
+        if (candidates.size() == 1) return candidates.get(0).steps;
 
         if (candidates.size() > 1) {
             for (ModeEntry candidate : candidates) {
@@ -379,7 +379,7 @@ public class RctController {
     }
 
     private String plannedModeName() {
-        return plannedSteps.isEmpty() ? "режима" : plannedSteps.getFirst();
+        return plannedSteps.isEmpty() ? "режима" : plannedSteps.get(0);
     }
 
     private void switchTo(State next) {
